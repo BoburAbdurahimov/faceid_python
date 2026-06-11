@@ -165,7 +165,7 @@ async def verify_face(req: VerifyRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "face-verification"}
+    return {"status": "ok", "service": "face-verification", "version": "2-lenient", "threshold": 0.34}
 
 
 if __name__ == "__main__":

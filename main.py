@@ -74,10 +74,16 @@ def compare_faces_histogram(face1: np.ndarray, face2: np.ndarray) -> float:
     return score / 3.0
 
 
+def _normalized_gray(face: np.ndarray) -> np.ndarray:
+    """Grayscale + histogram equalization to reduce sensitivity to lighting/exposure."""
+    gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+    return cv2.equalizeHist(gray)
+
+
 def compare_faces_structural(face1: np.ndarray, face2: np.ndarray) -> float:
     """Compare two face images using structural similarity (SSIM-like via matchTemplate)."""
-    gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+    gray1 = _normalized_gray(face1)
+    gray2 = _normalized_gray(face2)
 
     # Normalized cross-correlation
     result = cv2.matchTemplate(gray1, gray2, cv2.TM_CCOEFF_NORMED)
@@ -86,8 +92,8 @@ def compare_faces_structural(face1: np.ndarray, face2: np.ndarray) -> float:
 
 def compare_faces_orb(face1: np.ndarray, face2: np.ndarray) -> float:
     """Compare two face images using ORB feature matching."""
-    gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+    gray1 = _normalized_gray(face1)
+    gray2 = _normalized_gray(face2)
 
     orb = cv2.ORB_create(nfeatures=500)
     kp1, des1 = orb.detectAndCompute(gray1, None)
@@ -132,11 +138,14 @@ async def verify_face(req: VerifyRequest):
         struct_score = compare_faces_structural(known_face, check_face)
         orb_score = compare_faces_orb(known_face, check_face)
 
-        # Weighted average — histogram and structural are most reliable
-        combined_score = (hist_score * 0.4) + (struct_score * 0.4) + (orb_score * 0.2)
+        # Weighted average. ORB (feature-based) and structural are more robust to
+        # lighting/exposure than the colour histogram, so they carry more weight.
+        combined_score = (hist_score * 0.3) + (struct_score * 0.4) + (orb_score * 0.3)
 
-        # Threshold for match
-        threshold = 0.45
+        # Threshold for match. 0.45 rejected too many legitimate logins (same person
+        # under different lighting/angle); 0.34 is more forgiving while still
+        # separating different faces. Optical login is convenience-grade only.
+        threshold = 0.34
         verified = combined_score >= threshold
 
         return {
